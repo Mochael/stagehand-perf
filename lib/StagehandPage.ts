@@ -1069,61 +1069,64 @@ ${scriptContent} \
   }
 
   /**
-   * Perform a simple Playwright action or extraction against the first successful entry from an ordered list of
-   * Locators, with graceful fallback to Stagehand's AI-backed `act`/`extract` when direct execution is not possible.
+   * Perform a Playwright action or extraction against the first Locator that succeeds,
+   * with graceful fallback to Stagehand's AI-backed `act`/`extract` when direct
+   * execution is not possible.
    *
-   * What it does
-   *   1) Clears Stagehand overlays so they never interfere with clicks/reads.
-   *   2) Iterates the provided `locators` in order, attempting the operation on each until one succeeds; if none
-   *      succeed (or the list is empty), falls back to AI.
-   *   3) Interprets `actionOrMethod` as a verb (no inline args). Arguments are supplied via the `inputValue` parameter:
-   *        - Actions requiring a value: `fill`, `press`, `selectOption` use `inputValue`.
-   *        - Extraction requiring a value: `getAttribute` uses `inputValue` as the attribute name.
-   *        - Other verbs ignore `inputValue`.
-   *   4) Executes the chosen operation directly with Playwright. For extractions, uses `waitUntilTruthy` helpers to
-   *      obtain a non-empty value (or to ensure element presence for `allTextContents`). Timeouts are forwarded to
-   *      the underlying Playwright calls when applicable.
-   *   5) For direct extractions, the raw string can optionally be transformed via `extractionTransform` and validated
-   *      against a provided Zod `schema`. If `schema` is provided without `extractionTransform`, an error is thrown
-   *      and the method ultimately falls back to AI extraction. If the transform/validation fails, the method also
-   *      falls back to AI extract.
-   *   6) If the verb is unknown, the element is missing, required `inputValue` is not provided, arguments are invalid,
-   *      or any error is thrown, it falls back to Stagehand's AI pipelines:
-   *        • extraction → `extract({ instruction, schema })`
-   *        • action     → `act({ action: instruction, variables: { inputValue } })`
-   *      where `instruction` is `description ?? actionOrMethod` (or `Extract using ${actionOrMethod}` for extraction).
-   *      When using AI fallback for actions and an `inputValue` is provided, `description` must include the token
-   *      `%inputValue%` so the value can be substituted.
+   * Overloads (aligned with accepted types):
+   *   • perform(options: PerformActionOptions) for actions
+   *   • perform(options: PerformExtractStringOptions) for extractions without schema
+   *   • perform<T extends z.AnyZodObject>(options: PerformExtractSchemaOptions<T>) for extractions with schema
    *
-   * Parameters
-   *   - locators: Locator[] — Ordered list of Playwright Locators to try. If empty, the method immediately uses the
-   *               fallback path.
-   *   - actionOrMethod: verb string (no inline args).
-   *       • Actions (exact set): "click" | "dblclick" | "hover" | "focus" | "fill" | "press" | "check" | "uncheck" | "selectOption"
-   *       • Extractions (exact set): "innerText" | "textContent" | "inputValue" | "innerHTML" | "allTextContents" | "getAttribute"
-   *   - timeout: number | undefined — Forwarded to relevant Playwright calls (e.g., `click`, `fill`, `press`,
-   *              `innerText`, `inputValue`, `getAttribute`). Not all operations accept a timeout (e.g., `focus`).
-   *   - description: string | undefined — Optional natural-language instruction used only in fallback (`act`/`extract`).
-   *                  If omitted, a default is derived from `actionOrMethod`. For action fallback with `inputValue`,
-   *                  include `%inputValue%` where the value should be substituted.
-   *   - schema: z.AnyZodObject | undefined — Optional Zod schema used to validate extraction results. In AI fallback
-   *             it is passed directly to `extract`. In the direct path, it must be accompanied by `extractionTransform`.
-   *   - extractionTransform: (raw: string) => z.infer<T> | Promise<z.infer<T>> — Optional function to shape the raw
-   *                          extracted string into the schema type before validation. Required when `schema` is provided.
-   *   - inputValue: string | undefined —
-   *       • Actions: the value for `fill` (text), `press` (key), and `selectOption` (value). Ignored by other actions.
-   *       • Extractions: the attribute name for `getAttribute`. Ignored by other extraction methods.
-   *       • AI fallback (actions): passed as `{ inputValue }` for variable substitution; `description` must include
-   *         `%inputValue%`.
+   * Return types (by overload):
+   *   • PerformActionOptions → Promise<void>
+   *   • PerformExtractStringOptions → Promise<string | undefined>
+   *   • PerformExtractSchemaOptions<T> → Promise<z.infer<T> | undefined>
    *
-   * Return value
-   *   - For actions: always `void` (the result of `act` in fallback is not returned).
-   *   - For extractions without `schema`: `string | undefined` (joined string for `allTextContents`).
-   *   - For extractions with `schema` and `extractionTransform`: `z.infer<T> | undefined`.
+   * Accepted option shapes (required vs optional fields):
    *
-   * Error handling
-   *   - Direct Playwright errors (including missing required `inputValue`) trigger the AI fallback. Errors thrown from
-   *     the AI fallback are propagated to the caller.
+   *   PerformActionOptions (actions)
+   *   - Required:
+   *     • locators: Locator[] — Ordered Locators to try (AI fallback if empty)
+   *     • method: "click" | "dblclick" | "hover" | "focus" | "fill" | "press" | "check" | "uncheck" | "selectOption"
+   *   - Optional:
+   *     • description?: string — Used only for AI fallback; default derived from the verb
+   *     • inputValue?: string — Required only for `fill` (text), `press` (key), and `selectOption` (value)
+   *     • timeout?: number — Forwarded to supported Playwright ops (e.g., `click`, `fill`, `press`, `selectOption`)
+   *
+   *   PerformExtractStringOptions (extractions without schema)
+   *   - Required:
+   *     • locators: Locator[]
+   *     • method: "innerText" | "textContent" | "inputValue" | "innerHTML" | "allTextContents" | "getAttribute"
+   *   - Optional:
+   *     • description?: string — Used only for AI fallback; default derived from the verb
+   *     • inputValue?: string — Attribute name for `getAttribute` (ignored for other extraction verbs)
+   *     • timeout?: number — Forwarded to supported Playwright ops (e.g., `innerText`, `inputValue`, `getAttribute`)
+   *   - Must omit:
+   *     • schema, extractionTransform (must be undefined in this variant)
+   *
+   *   PerformExtractSchemaOptions<T> (extractions with schema)
+   *   - Required:
+   *     • locators: Locator[]
+   *     • method: "innerText" | "textContent" | "inputValue" | "innerHTML" | "allTextContents" | "getAttribute"
+   *     • schema: T — Zod schema to validate the shaped result
+   *     • extractionTransform: (raw: string) => z.infer<T> | Promise<z.infer<T>> — Shapes raw string to schema type
+   *   - Optional:
+   *     • description?: string — Used only for AI fallback; default derived from the verb
+   *     • inputValue?: string — Attribute name for `getAttribute` (ignored for other extraction verbs)
+   *     • timeout?: number
+   *
+   * Behavior:
+   *   1) Clears Stagehand overlays before attempting any operation.
+   *   2) Iterates `locators` in order and attempts the verb on each until one succeeds.
+   *   3) For direct extractions, uses internal helpers to obtain non-empty values (or ensure presence for `allTextContents`).
+   *   4) If a required `inputValue` is missing, an unknown verb is provided, an element is absent, validation fails,
+   *      or any direct error occurs, it falls back to AI:
+   *        • extraction → extract({ instruction, schema }) where instruction is `description ?? \`Extract using ${actionOrMethod}\``
+   *        • action     → act({ action: instruction, variables: { inputValue } }) where instruction is `description ?? actionOrMethod`
+   *      For action fallback with an `inputValue`, `description` must include `%inputValue%` for substitution.
+   *
+   * Errors from AI fallback are propagated. Otherwise, failures in the direct path trigger the fallback paths above.
    */
   public async perform<T extends z.AnyZodObject>(
     options:
