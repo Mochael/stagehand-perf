@@ -2,6 +2,7 @@ import type {
   Browser as PlaywrightBrowser,
   BrowserContext as PlaywrightContext,
   Page as PlaywrightPage,
+  Locator,
 } from "playwright";
 import { z } from "zod/v3";
 import type {
@@ -37,6 +38,54 @@ export interface Page extends Omit<PlaywrightPage, "on"> {
   observe(): Promise<ObserveResult[]>;
   observe(instruction: string): Promise<ObserveResult[]>;
   observe(options?: ObserveOptions): Promise<ObserveResult[]>;
+
+  /**
+   * Performs an action or extraction on the first available element from a list of selectors.
+   */
+  // Action methods → always return void
+  perform(
+    locators: Locator[],
+    method:
+      | "click"
+      | "dblclick"
+      | "hover"
+      | "focus"
+      | `fill:${string}`
+      | `press:${string}`
+      | "check"
+      | "uncheck"
+      | `selectOption:${string}`,
+    timeout?: number,
+    description?: string,
+  ): Promise<void>;
+  // Extraction without schema → returns string or undefined
+  perform(
+    locators: Locator[],
+    method:
+      | "innerText"
+      | "textContent"
+      | "inputValue"
+      | "innerHTML"
+      | "allTextContents"
+      | `getAttribute:${string}`,
+    timeout?: number,
+    description?: string,
+  ): Promise<string | undefined>;
+  // Extraction with schema → must also provide extractionTransform that maps string to schema type
+  perform<T extends z.AnyZodObject>(
+    locators: Locator[],
+    method:
+      | "innerText"
+      | "textContent"
+      | "inputValue"
+      | "innerHTML"
+      | "allTextContents"
+      | `getAttribute:${string}`,
+    timeout: number | undefined,
+    description: string | undefined,
+    schema: T,
+    extractionTransform: (raw: string) => z.infer<T> | Promise<z.infer<T>>,
+  ): Promise<z.infer<T> | undefined>;
 
   on: {
     (event: "popup", listener: (page: Page) => unknown): Page;

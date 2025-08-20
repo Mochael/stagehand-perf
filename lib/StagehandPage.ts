@@ -1,4 +1,9 @@
-import type { CDPSession, Page as PlaywrightPage, Frame } from "playwright";
+import type {
+  CDPSession,
+  Page as PlaywrightPage,
+  Frame,
+  Locator,
+} from "playwright";
 import { selectors } from "playwright";
 import { z } from "zod/v3";
 import { Page, defaultExtractSchema } from "../types/page";
@@ -30,6 +35,7 @@ import {
 import { StagehandAPIError } from "@/types/stagehandApiErrors";
 import { scriptContent } from "@/lib/dom/build/scriptContent";
 import type { Protocol } from "devtools-protocol";
+import { waitUntilTruthy, validateZodSchema } from "@/lib/utils";
 
 async function getCurrentRootFrameId(session: CDPSession): Promise<string> {
   const { frameTree } = (await session.send(
@@ -1049,6 +1055,214 @@ ${scriptContent} \
         throw err;
       }
       throw new StagehandDefaultError(err);
+    }
+  }
+
+  public async perform<T extends z.AnyZodObject>(
+    locators: Locator[],
+    actionOrMethod: string,
+    timeout?: number,
+    description?: string,
+    schema?: z.AnyZodObject,
+    extractionTransform?: (raw: string) => z.infer<T> | Promise<z.infer<T>>,
+  ): Promise<string | z.infer<T> | undefined | void> {
+    const isExtraction = (method: string): boolean => {
+      const verb = method.split(":")[0].trim();
+      return (
+        verb === "innerText" ||
+        verb === "textContent" ||
+        verb === "inputValue" ||
+        verb === "innerHTML" ||
+        verb === "allTextContents" ||
+        verb === "getAttribute"
+      );
+    };
+
+    const fallback = async (): Promise<
+      string | z.infer<T> | undefined | void
+    > => {
+      try {
+        if (isExtraction(actionOrMethod)) {
+          const instruction = description ?? `Extract using ${actionOrMethod}`;
+          // If schema provided, return full object; else default to { extraction: string }
+          const result = await this.extract({
+            instruction,
+            schema: schema ?? defaultExtractSchema,
+          });
+          if (!result) return undefined;
+          if (schema) return result as z.infer<T>;
+          return (result as { extraction?: string }).extraction ?? undefined;
+        } else {
+          const instruction = description ?? actionOrMethod;
+          console.log("AI fallback instruction:", instruction);
+          await this.act(instruction);
+          return;
+        }
+      } catch (err) {
+        // Swallow Stagehand errors from fallback per spec
+        if (err instanceof StagehandError || err instanceof StagehandAPIError) {
+          throw err;
+        }
+        throw err;
+      }
+    };
+
+    try {
+      await clearOverlays(this.page);
+
+      // If no locators provided, go to fallback paths
+      if (!locators || locators.length === 0) {
+        return await fallback();
+      }
+
+      const [verbRaw, ...rest] = actionOrMethod.split(":");
+      const verb = verbRaw.trim();
+      const arg = rest.length > 0 ? rest.join(":").trim() : undefined;
+
+      // Try each locator in sequence until one succeeds
+      for (let i = 0; i < locators.length; i++) {
+        const target = locators[i];
+        try {
+          // Extraction methods
+          if (isExtraction(actionOrMethod)) {
+            if (schema && !extractionTransform) {
+              throw new Error(
+                "When providing a schema to perform(), you must also provide an extractionTransform that maps the extracted string to the schema type.",
+              );
+            }
+
+            const maybeShape = async (
+              rawString: string,
+            ): Promise<z.TypeOf<T> | string | undefined> => {
+              if (schema && extractionTransform) {
+                try {
+                  const shaped = await extractionTransform(rawString);
+                  validateZodSchema(schema, shaped);
+                  return shaped;
+                } catch {
+                  return (await fallback()) as z.TypeOf<T> | string | undefined;
+                }
+              }
+              return rawString;
+            };
+            switch (verb) {
+              case "innerText": {
+                const raw = await waitUntilTruthy(
+                  target,
+                  (l) => l.innerText({ timeout }),
+                  timeout,
+                );
+                return await maybeShape(raw);
+              }
+              case "textContent": {
+                const raw = await waitUntilTruthy(
+                  target,
+                  (l) => l.textContent({ timeout }) as Promise<string | null>,
+                  timeout,
+                );
+                return await maybeShape(raw);
+              }
+              case "inputValue": {
+                const raw = await waitUntilTruthy(
+                  target,
+                  (l) => l.inputValue({ timeout }),
+                  timeout,
+                );
+                return await maybeShape(raw);
+              }
+              case "innerHTML": {
+                const raw = await waitUntilTruthy(
+                  target,
+                  (l) => l.innerHTML({ timeout }) as Promise<string>,
+                  timeout,
+                );
+                return await maybeShape(raw);
+              }
+              case "allTextContents": {
+                // Ensure element is visible first, then read contents
+                await waitUntilTruthy(target, undefined, timeout);
+                const arr = await target.allTextContents();
+                const joined = Array.isArray(arr)
+                  ? arr.join("\n")
+                  : String(arr ?? "");
+                return await maybeShape(joined);
+              }
+              case "getAttribute": {
+                if (!arg)
+                  throw new Error(
+                    "getAttribute requires a name, e.g. 'getAttribute:href'",
+                  );
+                const raw = await waitUntilTruthy(
+                  target,
+                  (l) => l.getAttribute(arg, { timeout }),
+                  timeout,
+                );
+                return await maybeShape(raw);
+              }
+              default:
+                // Unknown extraction verb → fallback to AI extract
+                return await fallback();
+            }
+          }
+
+          // Action methods
+          switch (verb) {
+            case "click":
+              await target.click({ timeout });
+              return;
+            case "dblclick":
+              await target.dblclick({ timeout });
+              return;
+            case "hover":
+              await target.hover({ timeout });
+              return;
+            case "focus":
+              await target.focus();
+              return;
+            case "fill":
+              if (arg === undefined)
+                throw new Error("fill requires an argument, e.g. 'fill:hello'");
+              await target.fill(arg, { timeout });
+              return;
+            case "press":
+              if (arg === undefined)
+                throw new Error("press requires a key, e.g. 'press:Enter'");
+              await target.press(arg, { timeout });
+              return;
+            case "check":
+              await target.check({ timeout });
+              return;
+            case "uncheck":
+              await target.uncheck({ timeout });
+              return;
+            case "selectOption":
+              if (arg === undefined)
+                throw new Error(
+                  "selectOption requires a value, e.g. 'selectOption:CA'",
+                );
+              await target.selectOption(arg, { timeout });
+              return;
+            default:
+              // Unknown action → fallback to LLM-based act
+              await fallback();
+              return;
+          }
+        } catch (err) {
+          console.log(
+            `Locator ${i + 1} failed with selector: ${locators[i]}, error: ${err}`,
+          );
+          // If this is the last locator, don't continue the loop
+          if (i === locators.length - 1) {
+            console.log("All locators exhausted, falling back to AI");
+            return await fallback();
+          }
+          // Otherwise continue to next locator
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      // On any error during racing, fall back gracefully
+      return await fallback();
     }
   }
 

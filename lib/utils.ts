@@ -1,11 +1,13 @@
 import { ZodFirstPartyTypeKind as Kind, z } from "zod/v3";
-import { ObserveResult, Page } from ".";
+import { ObserveResult } from ".";
+import { Page } from "../types/page";
 import { LogLine } from "../types/log";
 import { ZodPathSegments } from "../types/stagehand";
 import { Schema, Type } from "@google/genai";
 import { ModelProvider } from "../types/model";
 import { ZodSchemaValidationError } from "@/types/stagehandErrors";
 import { ID_PATTERN } from "@/types/context";
+import { Locator } from "@playwright/test";
 
 export function validateZodSchema(schema: z.ZodTypeAny, data: unknown) {
   const result = schema.safeParse(data);
@@ -497,4 +499,47 @@ export function trimTrailingTextNode(
   path: string | undefined,
 ): string | undefined {
   return path?.replace(/\/text\(\)(\[\d+\])?$/iu, "");
+}
+
+type Falsy = false | 0 | 0n | "" | null | undefined;
+type Truthy<T> = Exclude<T, Falsy>;
+
+/**
+ * Waits until a locator is visible and an optional extractor function returns a truthy value.
+ * Falls back to a short sleep loop until timeout to avoid tight CPU usage.
+ * The provided locator must resolve to a single element (e.g., use .first()).
+ */
+export async function waitUntilTruthy<T>(
+  locator: Locator,
+  fn?: (locator: Locator) => Promise<T>,
+  timeout: number = 3_000,
+): Promise<Truthy<T>> {
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < timeout) {
+    try {
+      let result: T | boolean = true;
+      if (fn) {
+        // If this is a playwright function, then it should handle the scrolling into view for us. So we want to try it first before calling the visible check.
+        result = await fn(locator);
+      }
+
+      if (result) {
+        return result as Truthy<T>;
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("Timeout")) {
+        // keep polling until overall timeout
+        // no-op
+      } else {
+        throw error;
+      }
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  throw new Error(
+    `Attempted to wait for ${timeout}ms, but matcher still failed for ${locator.toString()}`,
+  );
 }
