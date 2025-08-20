@@ -50,13 +50,14 @@ export interface Page extends Omit<PlaywrightPage, "on"> {
       | "dblclick"
       | "hover"
       | "focus"
-      | `fill:${string}`
-      | `press:${string}`
+      | "fill"
+      | "press"
       | "check"
       | "uncheck"
-      | `selectOption:${string}`,
+      | "selectOption",
     timeout?: number,
     description?: string,
+    inputValue?: string,
   ): Promise<void>;
   // Extraction without schema → returns string or undefined
   perform(
@@ -67,9 +68,10 @@ export interface Page extends Omit<PlaywrightPage, "on"> {
       | "inputValue"
       | "innerHTML"
       | "allTextContents"
-      | `getAttribute:${string}`,
+      | "getAttribute",
     timeout?: number,
     description?: string,
+    inputValue?: string,
   ): Promise<string | undefined>;
   // Extraction with schema → must also provide extractionTransform that maps string to schema type
   perform<T extends z.AnyZodObject>(
@@ -80,11 +82,12 @@ export interface Page extends Omit<PlaywrightPage, "on"> {
       | "inputValue"
       | "innerHTML"
       | "allTextContents"
-      | `getAttribute:${string}`,
+      | "getAttribute",
     timeout: number | undefined,
     description: string | undefined,
     schema: T,
     extractionTransform: (raw: string) => z.infer<T> | Promise<z.infer<T>>,
+    inputValue?: string,
   ): Promise<z.infer<T> | undefined>;
 
   on: {

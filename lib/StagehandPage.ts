@@ -1065,9 +1065,10 @@ ${scriptContent} \
     description?: string,
     schema?: z.AnyZodObject,
     extractionTransform?: (raw: string) => z.infer<T> | Promise<z.infer<T>>,
+    inputValue?: string,
   ): Promise<string | z.infer<T> | undefined | void> {
     const isExtraction = (method: string): boolean => {
-      const verb = method.split(":")[0].trim();
+      const verb = method.trim();
       return (
         verb === "innerText" ||
         verb === "textContent" ||
@@ -1095,7 +1096,17 @@ ${scriptContent} \
         } else {
           const instruction = description ?? actionOrMethod;
           console.log("AI fallback instruction:", instruction);
-          await this.act(instruction);
+          if (inputValue !== undefined && inputValue !== null) {
+            if (!description || !description.includes("%inputValue%")) {
+              throw new Error(
+                "When providing inputValue, the description must include %inputValue% so it can be substituted during fallback act.",
+              );
+            }
+          }
+          await this.act({
+            action: instruction,
+            variables: inputValue ? { inputValue } : undefined,
+          });
           return;
         }
       } catch (err) {
@@ -1115,9 +1126,7 @@ ${scriptContent} \
         return await fallback();
       }
 
-      const [verbRaw, ...rest] = actionOrMethod.split(":");
-      const verb = verbRaw.trim();
-      const arg = rest.length > 0 ? rest.join(":").trim() : undefined;
+      const verb = actionOrMethod.trim();
 
       // Try each locator in sequence until one succeeds
       for (let i = 0; i < locators.length; i++) {
@@ -1188,13 +1197,14 @@ ${scriptContent} \
                 return await maybeShape(joined);
               }
               case "getAttribute": {
-                if (!arg)
+                const attributeName = inputValue;
+                if (!attributeName)
                   throw new Error(
-                    "getAttribute requires a name, e.g. 'getAttribute:href'",
+                    "getAttribute requires an attribute name. Provide it via the inputValue parameter.",
                   );
                 const raw = await waitUntilTruthy(
                   target,
-                  (l) => l.getAttribute(arg, { timeout }),
+                  (l) => l.getAttribute(attributeName, { timeout }),
                   timeout,
                 );
                 return await maybeShape(raw);
@@ -1220,14 +1230,24 @@ ${scriptContent} \
               await target.focus();
               return;
             case "fill":
-              if (arg === undefined)
-                throw new Error("fill requires an argument, e.g. 'fill:hello'");
-              await target.fill(arg, { timeout });
+              {
+                const valueToFill = inputValue;
+                if (valueToFill === undefined)
+                  throw new Error(
+                    "fill requires an input value. Provide it via the inputValue parameter.",
+                  );
+                await target.fill(valueToFill, { timeout });
+              }
               return;
             case "press":
-              if (arg === undefined)
-                throw new Error("press requires a key, e.g. 'press:Enter'");
-              await target.press(arg, { timeout });
+              {
+                const keyToPress = inputValue;
+                if (keyToPress === undefined)
+                  throw new Error(
+                    "press requires a key. Provide it via the inputValue parameter.",
+                  );
+                await target.press(keyToPress, { timeout });
+              }
               return;
             case "check":
               await target.check({ timeout });
@@ -1236,11 +1256,14 @@ ${scriptContent} \
               await target.uncheck({ timeout });
               return;
             case "selectOption":
-              if (arg === undefined)
-                throw new Error(
-                  "selectOption requires a value, e.g. 'selectOption:CA'",
-                );
-              await target.selectOption(arg, { timeout });
+              {
+                const optionToSelect = inputValue;
+                if (optionToSelect === undefined)
+                  throw new Error(
+                    "selectOption requires a value. Provide it via the inputValue parameter.",
+                  );
+                await target.selectOption(optionToSelect, { timeout });
+              }
               return;
             default:
               // Unknown action → fallback to LLM-based act
