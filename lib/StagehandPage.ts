@@ -1,12 +1,13 @@
-import type {
-  CDPSession,
-  Page as PlaywrightPage,
-  Frame,
-  Locator,
-} from "playwright";
+import type { CDPSession, Page as PlaywrightPage, Frame } from "playwright";
 import { selectors } from "playwright";
 import { z } from "zod/v3";
-import { Page, defaultExtractSchema } from "../types/page";
+import {
+  Page,
+  defaultExtractSchema,
+  PerformActionOptions,
+  PerformExtractStringOptions,
+  PerformExtractSchemaOptions,
+} from "../types/page";
 import {
   ExtractOptions,
   ExtractResult,
@@ -1125,14 +1126,33 @@ ${scriptContent} \
    *     the AI fallback are propagated to the caller.
    */
   public async perform<T extends z.AnyZodObject>(
-    locators: Locator[],
-    actionOrMethod: string,
-    timeout?: number,
-    description?: string,
-    schema?: z.AnyZodObject,
-    extractionTransform?: (raw: string) => z.infer<T> | Promise<z.infer<T>>,
-    inputValue?: string,
-  ): Promise<string | z.infer<T> | undefined | void> {
+    options:
+      | PerformActionOptions
+      | PerformExtractStringOptions
+      | PerformExtractSchemaOptions<T>,
+  ): Promise<void | string | z.infer<T> | undefined> {
+    const {
+      locators,
+      method: actionOrMethod,
+      timeout,
+      description,
+    } = options as PerformActionOptions;
+
+    let schema: z.AnyZodObject | undefined;
+    let extractionTransform:
+      | ((raw: string) => z.infer<T> | Promise<z.infer<T>>)
+      | undefined;
+    const inputValue: string | undefined =
+      (options as PerformActionOptions).inputValue ??
+      (options as PerformExtractStringOptions).inputValue ??
+      (options as PerformExtractSchemaOptions<T>).inputValue;
+
+    if ((options as PerformExtractSchemaOptions<T>).schema) {
+      schema = (options as PerformExtractSchemaOptions<T>).schema;
+      extractionTransform = (options as PerformExtractSchemaOptions<T>)
+        .extractionTransform;
+    }
+
     const isExtraction = (method: string): boolean => {
       const verb = method.trim();
       return (

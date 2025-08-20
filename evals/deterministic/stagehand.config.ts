@@ -12,7 +12,8 @@ const StagehandConfig: ConstructorParams = {
   },
   enableCaching: false /* Enable caching functionality */,
   localBrowserLaunchOptions: {
-    headless: true /* Run browser in headless mode */,
+    headless:
+      process.env.HEADLESS !== "false" /* Run browser in headless mode */,
   },
 };
 export default StagehandConfig;

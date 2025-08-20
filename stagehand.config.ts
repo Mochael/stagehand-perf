@@ -32,7 +32,7 @@ const StagehandConfig: ConstructorParams = {
     },
   },
   localBrowserLaunchOptions: {
-    headless: false,
+    headless: process.env.HEADLESS !== "false",
     viewport: {
       width: 1024,
       height: 768,

@@ -43,51 +43,12 @@ export interface Page extends Omit<PlaywrightPage, "on"> {
    * Performs an action or extraction on the first available element from a list of selectors.
    */
   // Action methods → always return void
-  perform(
-    locators: Locator[],
-    method:
-      | "click"
-      | "dblclick"
-      | "hover"
-      | "focus"
-      | "fill"
-      | "press"
-      | "check"
-      | "uncheck"
-      | "selectOption",
-    timeout?: number,
-    description?: string,
-    inputValue?: string,
-  ): Promise<void>;
-  // Extraction without schema → returns string or undefined
-  perform(
-    locators: Locator[],
-    method:
-      | "innerText"
-      | "textContent"
-      | "inputValue"
-      | "innerHTML"
-      | "allTextContents"
-      | "getAttribute",
-    timeout?: number,
-    description?: string,
-    inputValue?: string,
-  ): Promise<string | undefined>;
-  // Extraction with schema → must also provide extractionTransform that maps string to schema type
+  perform(options: PerformActionOptions): Promise<void>;
+  // Extraction without schema (options) → returns string or undefined
+  perform(options: PerformExtractStringOptions): Promise<string | undefined>;
+  // Extraction with schema (options) → returns shaped type or undefined
   perform<T extends z.AnyZodObject>(
-    locators: Locator[],
-    method:
-      | "innerText"
-      | "textContent"
-      | "inputValue"
-      | "innerHTML"
-      | "allTextContents"
-      | "getAttribute",
-    timeout: number | undefined,
-    description: string | undefined,
-    schema: T,
-    extractionTransform: (raw: string) => z.infer<T> | Promise<z.infer<T>>,
-    inputValue?: string,
+    options: PerformExtractSchemaOptions<T>,
   ): Promise<z.infer<T> | undefined>;
 
   on: {
@@ -100,3 +61,47 @@ export type BrowserContext = PlaywrightContext;
 
 // Empty type for now, but will be used in the future
 export type Browser = PlaywrightBrowser;
+
+// New options-style APIs for named-like args
+export type PerformActionOptions = {
+  locators: Locator[];
+  method:
+    | "click"
+    | "dblclick"
+    | "hover"
+    | "focus"
+    | "fill"
+    | "press"
+    | "check"
+    | "uncheck"
+    | "selectOption";
+  description?: string;
+  inputValue?: string;
+  timeout?: number;
+};
+
+export type PerformExtractBase = {
+  locators: Locator[];
+  method:
+    | "innerText"
+    | "textContent"
+    | "inputValue"
+    | "innerHTML"
+    | "allTextContents"
+    | "getAttribute";
+  description?: string;
+  inputValue?: string; // used as attribute name for getAttribute
+};
+
+export type PerformExtractStringOptions = PerformExtractBase & {
+  schema?: undefined;
+  extractionTransform?: undefined;
+  timeout?: number;
+};
+
+export type PerformExtractSchemaOptions<T extends z.AnyZodObject> =
+  PerformExtractBase & {
+    schema: T;
+    extractionTransform: (raw: string) => z.infer<T> | Promise<z.infer<T>>;
+    timeout?: number;
+  };

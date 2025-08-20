@@ -19,7 +19,7 @@
     "e2e": "pnpm run build && cd evals/deterministic && playwright test --config=e2e.playwright.config.ts",
     "e2e:bb": "pnpm run build && cd evals/deterministic && playwright test --config=bb.playwright.config.ts",
     "e2e:local": "pnpm run build && cd evals/deterministic && playwright test --config=local.playwright.config.ts",
-    "e2e:perform": "pnpm run build && cd evals/deterministic && playwright test tests/local/perform.test.ts --config=local.playwright.config.ts",
+    "e2e:perform": "pnpm run build && cd evals/ai-tests && HEADLESS=false playwright test tests/local/perform.test.ts --config=ai.playwright.config.ts",
     "build-dom-scripts": "tsx lib/dom/genDomScripts.ts",
     "build-types": "tsc --emitDeclarationOnly --outDir dist",
     "build-js": "tsup lib/index.ts --dts",

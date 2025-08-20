@@ -1,13 +1,13 @@
 import { defineConfig, devices } from "@playwright/test";
 
 /**
- * See https://playwright.dev/docs/test-configuration.
+ * Configuration for AI-powered tests that are non-deterministic
  */
 export default defineConfig({
   testDir: "./tests/local",
 
   /* Maximum time one test can run for. */
-  timeout: 30 * 1000,
+  timeout: 60 * 1000,
 
   /* Fail the build on CI if you accidentally left test.only in the source code. */
   forbidOnly: !!process.env.CI,
@@ -25,7 +25,7 @@ export default defineConfig({
   use: {
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: "on-first-retry",
-    headless: true,
+    headless: process.env.HEADLESS !== "false",
   },
 
   /* Configure projects for major browsers */
