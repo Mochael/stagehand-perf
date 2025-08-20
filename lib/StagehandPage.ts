@@ -101,6 +101,7 @@ export class StagehandPage {
           (prop === ("act" as keyof Page) ||
             prop === ("extract" as keyof Page) ||
             prop === ("observe" as keyof Page) ||
+            prop === ("perform" as keyof Page) ||
             prop === ("on" as keyof Page))
         ) {
           return () => {
@@ -411,6 +412,14 @@ ${scriptContent} \
 
             const method = this[prop as keyof StagehandPage] as EnhancedMethod;
             return (options: unknown) => method.call(this, options);
+          }
+
+          // Route perform through StagehandPage implementation
+          if (prop === "perform") {
+            const method = this.perform.bind(this);
+            return (
+              ...args: Parameters<typeof this.perform>
+            ): ReturnType<typeof this.perform> => method(...args);
           }
 
           // Handle screenshots with CDP

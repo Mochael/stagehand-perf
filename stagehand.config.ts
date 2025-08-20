@@ -38,6 +38,6 @@ const StagehandConfig: ConstructorParams = {
       height: 768,
     },
   } /* Configuration options for the local browser */,
-  experimental: false, // Enable experimental features
+  experimental: true, // Enable experimental features
 };
 export default StagehandConfig;
